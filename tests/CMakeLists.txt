@@ -1,19 +1,13 @@
-# Tests for the matching engine built with GoogleTest
-
 find_package(GTest REQUIRED)
 
-add_executable(engine_tests
-    EngineTests.cpp
+add_executable(orderbook_tests
+    OrderBookTests.cpp
 )
 
-target_include_directories(engine_tests PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
-)
-
-target_link_libraries(engine_tests PRIVATE
-    engine_lib
+target_link_libraries(orderbook_tests PRIVATE
+    orderbook_core
     GTest::gtest_main
 )
 
 include(GoogleTest)
-gtest_discover_tests(engine_tests)
+gtest_discover_tests(orderbook_tests)

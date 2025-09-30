@@ -1,22 +1,38 @@
 cmake_minimum_required(VERSION 3.10)
 project(Engine)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# core engine library
-add_library(engine_lib STATIC
-    src/Engine.cpp
+# core order book library
+add_library(orderbook_core STATIC
+    src/orderbook/OrderBook.cpp
+    src/orderbook/SideBook.cpp
+    src/orderbook/PriceLevel.cpp
 )
-target_include_directories(engine_lib PUBLIC
+target_include_directories(orderbook_core PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
+)
+
+# runtime engine wrapper
+add_library(matching_engine STATIC
+    src/engine/Engine.cpp
+)
+target_link_libraries(matching_engine PUBLIC orderbook_core)
+target_include_directories(matching_engine PUBLIC
     ${PROJECT_SOURCE_DIR}/include
 )
 
 # main engine executable
 add_executable(engine
-    src/main.cpp
+    src/engine/main.cpp
 )
-target_link_libraries(engine PRIVATE engine_lib)
+target_link_libraries(engine PRIVATE matching_engine)
+
+add_executable(orderbook_microbench
+    bench/Microbench.cpp
+)
+target_link_libraries(orderbook_microbench PRIVATE orderbook_core)
 
 enable_testing()
 add_subdirectory(tests)
