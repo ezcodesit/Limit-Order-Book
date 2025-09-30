@@ -2,7 +2,6 @@
 
 #include "orderbook/Types.h"
 
-#include <atomic>
 #include <optional>
 
 namespace ob {
@@ -16,27 +15,34 @@ struct alignas(64) OrderNode {
 };
 
 struct Order {
-    Order(std::string id_,
+    Order(types::OrderId id_,
           types::Price price_,
           types::Quantity qty_,
           types::Side side_,
           types::TimeInForce tif_,
           std::optional<types::Quantity> min_qty_ = std::nullopt)
-        : id(std::move(id_))
+        : id(id_)
         , price(price_)
         , quantity(qty_)
         , side(side_)
         , tif(tif_)
-        , min_qty(min_qty_) {}
+    {
+        if (min_qty_) {
+            min_qty = *min_qty_;
+            has_min_qty = true;
+        }
+    }
 
-    std::string      id;
-    types::Price     price{0};
-    types::Quantity  quantity{0};
-    types::Side      side{types::Side::Buy};
+    types::OrderId     id{types::invalid_order_id};
+    types::Price       price{0};
+    types::Quantity    quantity{0};
+    types::Side        side{types::Side::Buy};
     types::TimeInForce tif{types::TimeInForce::GFD};
-    std::optional<types::Quantity> min_qty;
+    types::Quantity    min_qty{0};
+    bool               has_min_qty{false};
 
     OrderNode node{};
+    bool      resting{false};
 };
 
 } // namespace ob

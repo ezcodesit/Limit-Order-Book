@@ -14,6 +14,8 @@ public:
     types::Quantity total() const noexcept { return total_quantity_; }
     bool empty() const noexcept { return orders_.empty(); }
 
+    void set_price(types::Price price) noexcept { price_ = price; }
+
     void add(Order& order) noexcept;
     Order* top() noexcept;
     void remove(Order& order) noexcept;

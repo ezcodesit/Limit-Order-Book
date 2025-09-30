@@ -37,11 +37,11 @@ The engine itself is intentionally single-threaded to remain deterministic and e
 Holds type aliases and enum definitions shared across the engine:
 - `Price` / `Quantity`: 64-bit integers for tick-based math.
 - `Side`, `TimeInForce`: strongly typed enums.
-- `OrderIdHash`: FNV-1a hash functor used by unordered maps to avoid pulling in `<functional>` hashing overhead.
+- `OrderId`: monotonic internal identifier used in the hot path (external strings are mapped to these once by the CLI layer).
 
 ### 2.2 `include/orderbook/Order.h`
 Defines the `Order` object and its embedded `OrderNode`:
-- Orders carry public fields (id, price, quantity, side, tif, optional min fill).
+- Orders carry numeric ids, integerised price/qty, side, tif, optional min fill, plus a `resting` flag indicating whether the order currently sits in the book.
 - `OrderNode` links the order into intrusive FIFO lists. By embedding the node we avoid additional allocations and keep next/prev pointers cache-local with the order payload.
 
 ### 2.3 `include/orderbook/IntrusiveList.h`
@@ -63,10 +63,10 @@ Represents a single price level on one side of the book:
 
 ### 2.6 `include/orderbook/SideBook.h` / `src/orderbook/SideBook.cpp`
 Manages all price levels for one side (bid or ask):
-- `price_map_`: unordered_map from price → `PriceLevel`.
-- `ladder_`: ordered `std::set` to find the best price in O(log n).
-- `for_each_level()` enumerates levels (used for snapshots).
-- `on_fill()` updates the level total when a partial fill happens.
+- Dense `std::vector<PriceLevel>` covering the configured price range. The vector resizes in-place when prices fall outside the current span.
+- `active_` bitmap plus `best_index_` to track the top-of-book in O(1).
+- `available_to()` aggregates liquidity up to a given price without touching heap structures.
+- `for_each_level()` enumerates active levels (used for snapshots).
 
 ### 2.7 `include/orderbook/SpscRingBuffer.h`
 Reusable single-producer/single-consumer queue:
@@ -77,13 +77,13 @@ Reusable single-producer/single-consumer queue:
 
 ### 2.8 `include/orderbook/OrderBook.h` / `src/orderbook/OrderBook.cpp`
 The heart of the engine:
-- Holds `SideBook` instances for bids and asks plus the ID index.
+- Holds dense `SideBook` instances plus a vector index mapping internal order id → `Order*` for constant-time lookup.
 - `create_order()` allocates from the pool, indexes the order, and routes to `process()`.
 - `match()` loops over resting orders:
-  - Pre-checks available liquidity for FOK and MinQty.
+  - Pre-checks available liquidity for FOK and MinQty using `SideBook::available_to()`.
   - Pulls the top resting order via `SideBook::best()`.
-  - Trades using FIFO priority, updating both incoming and resting quantities.
-  - Emits `Trade` records via callback.
+  - Trades with FIFO priority, updating both incoming and resting quantities.
+  - Emits `Trade` records via a plain function pointer sink (no `std::function` overhead).
   - Removes orders when `quantity == 0`.
 - Remainders: GFD orders rest on their own side; IOC remainders cancel immediately.
 - `snapshot()` prints a deterministic book view by copying levels into vectors and sorting.
@@ -91,8 +91,9 @@ The heart of the engine:
 ### 2.9 `include/engine/Engine.h` / `src/engine/Engine.cpp`
 Command-line driver around the book:
 - Parses textual commands and enqueues structured `Command` objects into the ingress `SpscRingBuffer`.
+- Maps external string order ids to internal `OrderId`s once; all subsequent cancels/modifies operate on the numeric id.
 - `process()` thread consumes commands and calls the book.
-- Trade events are serialized to strings and enqueued into a logging ring buffer processed by `run_logger()` on a separate thread—keeping disk/console I/O off the hot path.
+- Trade events feed a lightweight sink that converts ids back to strings and enqueues human-readable prints onto a dedicated logging ring buffer.
 
 ### 2.10 Executables & Tests
 - `src/engine/main.cpp`: entry point hooking stdin/stdout.

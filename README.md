@@ -4,9 +4,9 @@ High-performance, single-threaded limit order book inspired by the CppCon 2024 t
 
 ## Architecture Overview
 - **Deterministic engine**: a single matching loop per symbol, fed via lock-free SPSC ring buffers.
-- **Order storage**: integerised prices and quantities. A hash map tracks price levels which embed intrusive FIFO lists of orders, plus a heap for best-price lookup.
-- **ID index**: direct map from user order id → intrusive node pointer for O(1) cancel/modify.
-- **Memory pool**: fixed-capacity allocator avoids heap traffic in the critical path.
+- **Order storage**: dense price ladder backed by contiguous `PriceLevel` slots; each level embeds an intrusive FIFO of resting orders to maintain price-time priority.
+- **Numeric IDs**: external string ids are mapped once to integral ids so the hot path never touches `std::string` or hashing.
+- **Memory pool**: fixed-capacity allocator avoids heap traffic on the matching path.
 - **Snapshots**: future double-buffer API to expose reader-friendly copies with zero contention.
 
 ## Getting Started
@@ -29,7 +29,7 @@ CANCEL <id>
 MODIFY <id> <BUY|SELL> <price> <qty> [MIN <qty>]
 PRINT
 ```
-Outputs `TRADE ...` lines for each execution; `PRINT` will eventually emit human-readable snapshots.
+Outputs `TRADE ...` lines for each execution; `PRINT` emits an aggregated snapshot of the book.
 
 ## Future Work
 - Double-buffered snapshots for readers.

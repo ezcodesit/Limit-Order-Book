@@ -1,6 +1,17 @@
+# Build artifacts
 /build/
+/build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
 compile_commands.json
+
+# Test/perf outputs
+perf_results.txt
+*.log
+
+# IDE / OS clutter
+.DS_Store
+*.swp
+*.swo

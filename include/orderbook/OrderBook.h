@@ -5,57 +5,61 @@
 #include "orderbook/SideBook.h"
 #include "orderbook/Types.h"
 
-#include <deque>
-#include <functional>
 #include <optional>
-#include <string>
-#include <unordered_map>
+#include <ostream>
+#include <vector>
 
 namespace ob {
 
 struct Trade {
-    std::string      resting_id;
-    types::Price     resting_px;
-    types::Quantity  traded_qty;
-    std::string      incoming_id;
-    types::Price     incoming_px;
+    types::OrderId   resting_id{types::invalid_order_id};
+    types::Price     resting_px{0};
+    types::Quantity  traded_qty{0};
+    types::OrderId   incoming_id{types::invalid_order_id};
+    types::Price     incoming_px{0};
 };
 
 class OrderBook {
 public:
-    explicit OrderBook(std::size_t pool_capacity = 1'000);
+    using trade_sink_t = void(*)(const Trade&, void*);
 
-    Order* create_order(std::string id,
+    OrderBook(types::Price min_price,
+              types::Price max_price,
+              std::size_t  pool_capacity = 1'000);
+
+    Order* create_order(types::OrderId id,
                         types::Price price,
                         types::Quantity qty,
                         types::Side side,
                         types::TimeInForce tif,
                         std::optional<types::Quantity> min_qty = std::nullopt);
 
-    void cancel(const std::string& id);
-    void modify(const std::string& id, types::Price price, types::Quantity qty,
+    void cancel(types::OrderId id);
+    void modify(types::OrderId id,
+                types::Price price,
+                types::Quantity qty,
                 std::optional<types::Quantity> min_qty = std::nullopt);
 
-    void process(Order& order);
+    bool has_order(types::OrderId id) const;
 
-    const SideBook& bids() const noexcept { return bids_; }
-    const SideBook& asks() const noexcept { return asks_; }
-
-    bool has_order(const std::string& id) const;
-
-    using trade_callback = std::function<void(const Trade&)>;
-    void set_trade_callback(trade_callback cb) { on_trade_ = std::move(cb); }
+    void set_trade_sink(trade_sink_t sink, void* ctx) noexcept {
+        trade_sink_ = sink;
+        trade_ctx_  = ctx;
+    }
 
     void snapshot(std::ostream& os) const;
 
 private:
+    void process(Order& order);
     void match(Order& incoming, SideBook& opposite, SideBook& same);
+    void ensure_index_capacity(types::OrderId id);
 
     MemoryPool<Order> pool_;
     SideBook bids_;
     SideBook asks_;
-    std::unordered_map<std::string, Order*, types::OrderIdHash> index_;
-    trade_callback on_trade_;
+    std::vector<Order*> id_index_;
+    trade_sink_t        trade_sink_{nullptr};
+    void*               trade_ctx_{nullptr};
 };
 
 } // namespace ob

@@ -1,9 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
-#include <string>
-#include <string_view>
 
 template <typename T>
 constexpr T align_to_cacheline(T size) noexcept {
@@ -12,21 +9,14 @@ constexpr T align_to_cacheline(T size) noexcept {
 }
 
 namespace ob::types {
-using Price   = std::int64_t;   // integerised price ticks
-using Quantity = std::int64_t;  // integral quantities
+
+using Price    = std::int64_t;   // integerised price ticks
+using Quantity = std::int64_t;   // integral quantities
+using OrderId  = std::uint64_t;  // internal order identifier
 
 enum class Side : std::uint8_t { Buy, Sell };
 enum class TimeInForce : std::uint8_t { GFD, IOC, FOK };
 
-struct OrderIdHash {
-    std::size_t operator()(std::string_view id) const noexcept {
-        std::size_t h = 0xcbf29ce484222325ULL;
-        for (unsigned char c : id) {
-            h ^= c;
-            h *= 0x100000001b3ULL;
-        }
-        return h;
-    }
-};
+inline constexpr OrderId invalid_order_id = static_cast<OrderId>(-1);
 
 } // namespace ob::types
