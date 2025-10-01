@@ -89,13 +89,17 @@ The heart of the engine:
 - `snapshot()` prints a deterministic book view by copying levels into vectors and sorting.
 
 ### 2.9 `include/engine/Engine.h` / `src/engine/Engine.cpp`
-Command-line driver around the book:
-- Parses textual commands and enqueues structured `Command` objects into the ingress `SpscRingBuffer`.
-- Maps external string order ids to internal `OrderId`s once; all subsequent cancels/modifies operate on the numeric id.
-- `process()` thread consumes commands and calls the book.
-- Trade events feed a lightweight sink that converts ids back to strings and enqueues human-readable prints onto a dedicated logging ring buffer.
+Per-symbol engine wrapper:
+- Exposes a `submit()` API that maps external ids to internal numeric ids and enqueues validated commands.
+- Runs a dedicated worker thread consuming the SPSC queue and a logging thread to flush trade prints.
 
-### 2.10 Executables & Tests
+### 2.10 `src/engine/main.cpp`
+Multi-symbol dispatcher:
+- Maintains a map from `<symbol>` string to `EngineApp` instance.
+- Parses CLI lines in the form `SYMBOL VERB …`, forwarding commands to the appropriate engine.
+- Lazily creates new engines when unseen symbols arrive, so each instrument gets its own deterministic matching loop.
+
+### 2.11 Executables & Tests
 - `src/engine/main.cpp`: entry point hooking stdin/stdout.
 - `bench/Microbench.cpp`: toy harness measuring mean latency of order inserts.
 - `tests/OrderBookTests.cpp`: GoogleTest verifying a basic match (more tests encouraged).
@@ -109,8 +113,10 @@ Command-line driver around the book:
 | `orderbook_core` | Static library containing the core matching engine implementation. |
 | `matching_engine` | Static library exposing the CLI-facing `EngineApp`. |
 | `engine` | Command-line executable (reads stdin → matching engine). |
-| `orderbook_microbench` | Micro-benchmark harness (simple insertion latency probe). |
+| `orderbook_microbench` | Legacy chrono-based benchmark (simple insertion latency probe). |
+| `orderbook_bench` | Google Benchmark harness providing structured latency measurements. |
 | `orderbook_tests` | GoogleTest suite. |
+| `orderbook_fuzz` | Stress executable generating random traffic bursts. |
 
 Build/test commands:
 ```bash
@@ -157,10 +163,10 @@ TRADE <resting-id> <resting-price> <qty> <incoming-id> <incoming-price> <qty>
 Let’s simulate a short session. Commands (prefixed with `>` for clarity) and outputs:
 
 ```
-> SELL GFD 100 5 ask1
-> SELL GFD 101 3 ask2
-> BUY GFD  99  5 bid1
-> PRINT
+> AAPL SELL GFD 100 5 ask1
+> AAPL SELL GFD 101 3 ask2
+> AAPL BUY  GFD  99  5 bid1
+> AAPL PRINT
 SELL:
 100 5
 101 3
@@ -177,8 +183,8 @@ Explanation so far:
 Now we cross the spread:
 
 ```
-> BUY IOC 101 4 taker1
-TRADE ask1 100 4 taker1 101 4
+> AAPL BUY IOC 101 4 taker1
+AAPL TRADE ask1 100 4 taker1 101 4
 ```
 
 Walkthrough:
@@ -194,7 +200,7 @@ Walkthrough:
 After the trade, a new print shows updated state:
 
 ```
-> PRINT
+> AAPL PRINT
 SELL:
 100 1
 101 3
@@ -205,9 +211,9 @@ BUY:
 Next, a Fill-or-Kill with minimum quantity:
 
 ```
-> BUY FOK 101 3 taker2 MIN 3
-TRADE ask1 100 1 taker2 101 1
-TRADE ask2 101 2 taker2 101 2
+> AAPL BUY FOK 101 3 taker2 MIN 3
+AAPL TRADE ask1 100 1 taker2 101 1
+AAPL TRADE ask2 101 2 taker2 101 2
 ```
 
 Here’s the flow:
@@ -220,7 +226,7 @@ Here’s the flow:
 Final snapshot:
 
 ```
-> PRINT
+> AAPL PRINT
 SELL:
 101 1
 BUY:
@@ -232,7 +238,7 @@ BUY:
 Modify and cancel example:
 
 ```
-> MODIFY bid1 SELL 102 4
+> AAPL MODIFY bid1 SELL 102 4
 ```
 
 This command flips `bid1` to the sell side at price 102:
@@ -241,13 +247,13 @@ This command flips `bid1` to the sell side at price 102:
 3. Price 102 crosses zero bids, so it rests on the ask side (now the best ask).
 
 ```
-> CANCEL ask2
+> AAPL CANCEL ask2
 ```
 
 Removes `ask2`. Snapshot now shows only the modified order:
 
 ```
-> PRINT
+> AAPL PRINT
 SELL:
 102 4
 BUY:

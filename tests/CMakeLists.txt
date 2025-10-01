@@ -1,4 +1,5 @@
 find_package(GTest REQUIRED)
+find_package(benchmark REQUIRED)
 
 add_executable(orderbook_tests
     OrderBookTests.cpp

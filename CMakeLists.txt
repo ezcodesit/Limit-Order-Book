@@ -34,5 +34,19 @@ add_executable(orderbook_microbench
 )
 target_link_libraries(orderbook_microbench PRIVATE orderbook_core)
 
+# Google Benchmark (optional)
+find_package(benchmark QUIET)
+if(benchmark_FOUND)
+    add_executable(orderbook_bench
+        bench/OrderBookBench.cpp
+    )
+    target_link_libraries(orderbook_bench PRIVATE orderbook_core benchmark::benchmark)
+endif()
+
+add_executable(orderbook_fuzz
+    tests/FuzzHarness.cpp
+)
+target_link_libraries(orderbook_fuzz PRIVATE orderbook_core)
+
 enable_testing()
 add_subdirectory(tests)

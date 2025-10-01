@@ -28,10 +28,13 @@ struct Command {
 
 class EngineApp {
 public:
-    EngineApp();
+    explicit EngineApp(std::string symbol,
+                       ob::types::Price min_price = 0,
+                       ob::types::Price max_price = 1'000'000,
+                       std::size_t      pool_capacity = 1'000'000);
     ~EngineApp();
 
-    void run_cli();
+    bool submit(Command cmd);
 
 private:
     void process();
@@ -43,6 +46,7 @@ private:
     const std::string& to_client_id(ob::types::OrderId internal) const;
 
     std::atomic<bool> running_{true};
+    std::string                 symbol_;
     ob::OrderBook               book_;
     ob::SpscRingBuffer<Command> ingress_;
     std::thread                 worker_;

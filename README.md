@@ -21,15 +21,34 @@ Targets:
 - `matching_engine`: CLI wrapper + ring-buffer ingestion.
 - `engine`: command-line executable (reads stdin commands).
 - `orderbook_tests`: GoogleTest suite covering core flows.
+- `orderbook_bench`: Google Benchmark harness for micro latency tests.
+- `orderbook_fuzz`: stress executable that hammers the engine with randomised traffic.
+
+## Using the CLI
+
+Run the engine (reads commands from stdin):
+```bash
+./build/engine
+```
+
+Optional helpers:
+```bash
+./build/orderbook_bench        # runs Google Benchmark suite (if available)
+./build/orderbook_fuzz         # random stress test with default seed
+./build/orderbook_fuzz 123456  # same, with custom seed
+```
 
 ## Command Protocol
 ```
-BUY|SELL <TIF> <price> <qty> <id> [MIN <qty>]
-CANCEL <id>
-MODIFY <id> <BUY|SELL> <price> <qty> [MIN <qty>]
-PRINT
+<symbol> BUY|SELL <TIF> <price> <qty> <client-id> [MIN <qty>]
+<symbol> CANCEL <client-id>
+<symbol> MODIFY <client-id> <BUY|SELL> <price> <qty> [MIN <qty>]
+<symbol> PRINT
 ```
-Outputs `TRADE ...` lines for each execution; `PRINT` emits an aggregated snapshot of the book.
+
+- `symbol`: arbitrary identifier for the instrument; each symbol gets its own matching loop.
+- `TIF`: `GFD`, `IOC`, or `FOK`. `MIN <qty>` enforces a minimum acceptable fill before resting; if liquidity is below the threshold the order cancels.
+- Trade prints include the symbol prefix, e.g. `AAPL TRADE ...`. `PRINT` emits a snapshot for the specified symbol.
 
 ## Future Work
 - Double-buffered snapshots for readers.
