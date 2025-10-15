@@ -20,33 +20,48 @@ int main(int argc, char** argv) {
     constexpr std::size_t iterations = 1'000'000;
 
     ob::OrderBook book(/*min_price=*/0, /*max_price=*/200'000, /*pool_capacity=*/2'000'000);
-    std::vector<ob::types::OrderId> live_ids;
-    live_ids.reserve(1'000'000);
+    struct LiveOrder {
+        ob::types::OrderId      id;
+        ob::types::Side         side;
+        ob::types::TimeInForce  tif;
+    };
+    std::vector<LiveOrder> live_orders;
+    live_orders.reserve(1'000'000);
     ob::types::OrderId next_id = 0;
 
     auto start = std::chrono::steady_clock::now();
 
     for (std::size_t i = 0; i < iterations; ++i) {
         int action = action_dist(rng);
-        if (action == 0 || live_ids.empty()) {
+        if (action == 0 || live_orders.empty()) {
             auto id = next_id++;
             auto price = price_dist(rng);
             auto qty = qty_dist(rng);
             auto side = side_dist(rng) == 0 ? ob::types::Side::Buy : ob::types::Side::Sell;
             ob::types::TimeInForce tif = static_cast<ob::types::TimeInForce>(tif_dist(rng));
-            book.create_order(id, price, qty, side, tif);
-            live_ids.push_back(id);
+            if (book.create_order(id, price, qty, side, tif)) {
+                live_orders.push_back(LiveOrder{id, side, tif});
+            }
         } else if (action == 1) {
-            auto idx = rng() % live_ids.size();
-            book.cancel(live_ids[idx]);
-            live_ids[idx] = live_ids.back();
-            live_ids.pop_back();
+            auto idx = rng() % live_orders.size();
+            book.cancel(live_orders[idx].id);
+            live_orders[idx] = live_orders.back();
+            live_orders.pop_back();
         } else {
-            auto idx = rng() % live_ids.size();
-            auto id = live_ids[idx];
+            auto idx = rng() % live_orders.size();
+            auto& live = live_orders[idx];
             auto price = price_dist(rng);
             auto qty = qty_dist(rng);
-            book.modify(id, price, qty);
+            auto side = side_dist(rng) == 0 ? ob::types::Side::Buy : ob::types::Side::Sell;
+            ob::types::TimeInForce tif = static_cast<ob::types::TimeInForce>(tif_dist(rng));
+            book.modify(live.id, side, price, qty, tif);
+            if (book.has_order(live.id)) {
+                live.side = side;
+                live.tif = tif;
+            } else {
+                live = live_orders.back();
+                live_orders.pop_back();
+            }
         }
     }
 
@@ -54,7 +69,7 @@ int main(int argc, char** argv) {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
     std::cout << "Fuzz completed in " << elapsed.count() << " ms with "
-              << live_ids.size() << " live orders remaining" << std::endl;
+              << live_orders.size() << " live orders remaining" << std::endl;
 
     return 0;
 }

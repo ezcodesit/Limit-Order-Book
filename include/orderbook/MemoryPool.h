@@ -9,7 +9,7 @@
 
 namespace ob {
 
-// Simple fixed-size memory pool for latency-sensitive allocations.
+// Simple fixed-size memory pool.
 template <typename T>
 class alignas(64) MemoryPool {
 public:

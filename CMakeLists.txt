@@ -4,6 +4,8 @@ project(Engine)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(USE_BOOST_INTRUSIVE "Use Boost.Intrusive for order lists" OFF)
+
 # core order book library
 add_library(orderbook_core STATIC
     src/orderbook/OrderBook.cpp
@@ -13,6 +15,12 @@ add_library(orderbook_core STATIC
 target_include_directories(orderbook_core PUBLIC
     ${PROJECT_SOURCE_DIR}/include
 )
+
+if(USE_BOOST_INTRUSIVE)
+    find_package(Boost REQUIRED)
+    target_compile_definitions(orderbook_core PUBLIC USE_BOOST_INTRUSIVE)
+    target_include_directories(orderbook_core PUBLIC ${Boost_INCLUDE_DIRS})
+endif()
 
 # runtime engine wrapper
 add_library(matching_engine STATIC
@@ -49,4 +57,6 @@ add_executable(orderbook_fuzz
 target_link_libraries(orderbook_fuzz PRIVATE orderbook_core)
 
 enable_testing()
-add_subdirectory(tests)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

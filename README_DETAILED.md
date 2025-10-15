@@ -48,6 +48,7 @@ Defines the `Order` object and its embedded `OrderNode`:
 Minimal intrusive FIFO used inside price levels:
 - `push_back`, `front`, `pop_front`, `erase` operate on `OrderNode` pointers.
 - No iterators or heap allocations; all manipulations are pointer rewrites.
+- When configured with `-DUSE_BOOST_INTRUSIVE=ON`, the FIFO becomes a thin adaptor over `boost::intrusive::list`, letting you experiment with Boost’s node management while preserving the in-house fallback.
 
 ### 2.4 `include/orderbook/MemoryPool.h`
 Fixed-capacity allocator for `Order` instances:
@@ -102,7 +103,9 @@ Multi-symbol dispatcher:
 ### 2.11 Executables & Tests
 - `src/engine/main.cpp`: entry point hooking stdin/stdout.
 - `bench/Microbench.cpp`: toy harness measuring mean latency of order inserts.
-- `tests/OrderBookTests.cpp`: GoogleTest verifying a basic match (more tests encouraged).
+- `tests/OrderBookTests.cpp`: GoogleTest verifying core flows plus two perf probes:
+  - `OrderBookPerf.OperationsWithinOneSecond` stresses create/cancel churn.
+  - `OrderBookPerf.ExecutionsWithinOneSecond` preloads one side and counts completed trades per second.
 
 ---
 

@@ -57,19 +57,25 @@ void OrderBook::cancel(types::OrderId id) {
 }
 
 void OrderBook::modify(types::OrderId id,
+                       types::Side side,
                        types::Price price,
                        types::Quantity qty,
+                       types::TimeInForce tif,
                        std::optional<types::Quantity> min_qty) {
     if (id >= id_index_.size()) return;
     Order* existing = id_index_[id];
     if (!existing) return;
-    types::Side side = existing->side;
     cancel(id);
-    create_order(id, price, qty, side, types::TimeInForce::GFD, min_qty);
+    create_order(id, price, qty, side, tif, min_qty);
 }
 
 bool OrderBook::has_order(types::OrderId id) const {
     return id < id_index_.size() && id_index_[id] != nullptr;
+}
+
+const Order* OrderBook::find(types::OrderId id) const noexcept {
+    if (id >= id_index_.size()) return nullptr;
+    return id_index_[id];
 }
 
 void OrderBook::process(Order& order) {

@@ -3,7 +3,13 @@
 #include <cstddef>
 #include <iterator>
 
+#ifdef USE_BOOST_INTRUSIVE
+#include <boost/intrusive/list.hpp>
+#endif
+
 namespace ob {
+
+#ifndef USE_BOOST_INTRUSIVE
 
 template <typename Node>
 class IntrusiveFifo {
@@ -59,5 +65,49 @@ private:
     Node* head_{nullptr};
     Node* tail_{nullptr};
 };
+
+#else
+
+template <typename Node>
+class IntrusiveFifo {
+public:
+    IntrusiveFifo() = default;
+
+    bool empty() const noexcept { return list_.empty(); }
+
+    void push_back(Node* node) noexcept {
+        if (!node) return;
+        list_.push_back(*node);
+    }
+
+    Node* front() noexcept {
+        if (list_.empty()) return nullptr;
+        return &list_.front();
+    }
+
+    const Node* front() const noexcept {
+        if (list_.empty()) return nullptr;
+        return &list_.front();
+    }
+
+    void pop_front() noexcept {
+        if (list_.empty()) return;
+        Node& node = list_.front();
+        list_.pop_front();
+        node.order = nullptr;
+    }
+
+    void erase(Node* node) noexcept {
+        if (!node) return;
+        list_.erase(list_.iterator_to(*node));
+        node->order = nullptr;
+    }
+
+private:
+    using list_type = boost::intrusive::list<Node, boost::intrusive::constant_time_size<false>>;
+    list_type list_{};
+};
+
+#endif
 
 } // namespace ob

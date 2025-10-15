@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef USE_BOOST_INTRUSIVE
+#include <boost/intrusive/list_hook.hpp>
+#endif
+
 #include "orderbook/Types.h"
 
 #include <optional>
@@ -8,10 +12,16 @@ namespace ob {
 
 struct Order;
 
-struct alignas(64) OrderNode {
-    Order*           order{nullptr};
-    OrderNode*       next{nullptr};
-    OrderNode*       prev{nullptr};
+struct alignas(64) OrderNode
+#ifdef USE_BOOST_INTRUSIVE
+    : boost::intrusive::list_base_hook<boost::intrusive::link_mode<boost::intrusive::normal_link>>
+#endif
+{
+    Order* order{nullptr};
+#ifndef USE_BOOST_INTRUSIVE
+    OrderNode* next{nullptr};
+    OrderNode* prev{nullptr};
+#endif
 };
 
 struct Order {

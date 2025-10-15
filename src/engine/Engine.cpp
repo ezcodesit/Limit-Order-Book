@@ -1,4 +1,5 @@
 #include "engine/Engine.h"
+#include "orderbook/Order.h"
 
 #include <cstdio>
 
@@ -76,9 +77,22 @@ void EngineApp::process() {
             case Command::Type::Cancel:
                 book_.cancel(cmd->internal_id);
                 break;
-            case Command::Type::Modify:
-                book_.modify(cmd->internal_id, cmd->price, cmd->qty, cmd->min_qty);
+            case Command::Type::Modify: {
+                const ob::Order* existing = book_.find(cmd->internal_id);
+                if (!existing) break;
+                auto tif = existing->tif;
+                std::optional<ob::types::Quantity> min_qty = cmd->min_qty;
+                if (!min_qty && existing->has_min_qty) {
+                    min_qty = existing->min_qty;
+                }
+                book_.modify(cmd->internal_id,
+                             cmd->side,
+                             cmd->price,
+                             cmd->qty,
+                             tif,
+                             min_qty);
                 break;
+            }
             case Command::Type::Print:
                 std::cout << "Symbol: " << symbol_ << '\n';
                 book_.snapshot(std::cout);

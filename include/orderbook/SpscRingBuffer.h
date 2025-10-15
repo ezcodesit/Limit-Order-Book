@@ -17,6 +17,9 @@ public:
         : capacity_(capacity)
         , mask_(capacity - 1)
         , buffer_(capacity) {
+        if (capacity < 2) {
+            throw std::invalid_argument("capacity must be at least 2 and power of two");
+        }
         if ((capacity_ & mask_) != 0) {
             throw std::invalid_argument("capacity must be power of two");
         }

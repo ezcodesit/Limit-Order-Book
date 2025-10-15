@@ -36,11 +36,14 @@ public:
 
     void cancel(types::OrderId id);
     void modify(types::OrderId id,
+                types::Side side,
                 types::Price price,
                 types::Quantity qty,
+                types::TimeInForce tif,
                 std::optional<types::Quantity> min_qty = std::nullopt);
 
     bool has_order(types::OrderId id) const;
+    const Order* find(types::OrderId id) const noexcept;
 
     void set_trade_sink(trade_sink_t sink, void* ctx) noexcept {
         trade_sink_ = sink;
