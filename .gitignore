@@ -1,6 +1,8 @@
 # Build artifacts
 /build/
 /build-*/
+/build_tests/
+/build_tests_rel/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
