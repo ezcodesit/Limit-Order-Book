@@ -109,7 +109,62 @@ Multi-symbol dispatcher:
 
 ---
 
-## 3. Build Targets
+## 3. Visual Walkthrough: Command → Trade
+
+```
+┌─────────────┐   ┌────────────┐   ┌────────────────┐   ┌──────────────┐
+│ Text input  │ → │ CLI parser │ → │ EngineApp       │ → │ OrderBook     │
+│ (stdin)     │   │ (main.cpp) │   │ ingress queue   │   │ matching core │
+└─────────────┘   └────────────┘   └──────┬─────────┘   └──────┬───────┘
+                                          │                     │
+                                          ▼                     ▼
+                             ┌────────────────────┐   ┌────────────────────┐
+                             │ Worker thread      │   │ SideBook +          │
+                             │ EngineApp::process │   │ PriceLevel structs  │
+                             └────────┬───────────┘   └────────┬───────────┘
+                                      │                        │
+                                      ▼                        ▼
+                              ┌────────────────┐    ┌────────────────────┐
+                              │ OrderBook::    │    │ Trade sink callback │
+                              │ match/process  │    │ (EngineApp logger)  │
+                              └────────────────┘    └────────────────────┘
+```
+
+### End-to-end outline
+1. **Command entry** – `engine` reads a line such as `AAPL BUY IOC 101 5 client42`.
+2. **Parsing & dispatch** – `main.cpp` retrieves (or creates) the per-symbol `EngineApp` and builds an `engine::Command`.
+3. **Queueing** – `EngineApp::submit` validates IDs, maps the client string to an internal numeric handle, then pushes the command onto its SPSC ring buffer. The caller doesn’t block on matching.
+4. **Worker processing** – A dedicated worker thread drains the queue and calls the appropriate `OrderBook` API (`create_order`, `cancel`, `modify`, or `snapshot`).
+5. **Matching & resting** – Inside `OrderBook::match`, the dense `SideBook` structures check available liquidity, walk the best price levels, execute FIFO trades, and rest any unfilled GFD quantities. All operations touch intrusive nodes and the memory pool, so there is no heap traffic.
+6. **Trade publication** – Each fill triggers the `trade_sink_` callback. `EngineApp`’s sink enqueues a human-readable log line onto a second SPSC queue consumed by the logger thread, which prints to stdout asynchronously.
+7. **Snapshots** – `PRINT` commands redirect to `OrderBook::snapshot`, which copies active levels, sorts them (asks ascending, bids descending), and emits a deterministic ladder.
+
+### Two concrete scenarios
+**Crossing IOC**
+```
+AAPL SELL GFD 100 5 ask1
+AAPL BUY  IOC 101 5 taker1
+```
+1. `ask1` rests on the ask side at 100.
+2. `taker1` arrives; the match loop finds ≥5 shares available at prices ≤101, trades 5 vs 5, removes `ask1`, and routes
+   `AAPL TRADE ask1 100 5 taker1 101 5` through the logger queue. Because the order was IOC there is no resting remainder.
+
+**Resting spread**
+```
+AAPL SELL GFD 100 5 ask1
+AAPL BUY  GFD  99 5 bid1
+```
+`ask1` sets the best ask at 100; `bid1` does not cross, so it rests at 99. A later `PRINT` returns:
+```
+SELL:
+100 5
+BUY:
+99 5
+```
+
+---
+
+## 4. Build Targets
 
 | Target | Description |
 |--------|-------------|
@@ -140,7 +195,7 @@ Run the microbench:
 
 ---
 
-## 4. Command Protocol
+## 5. Command Protocol
 
 ```
 BUY|SELL <TIF> <price> <qty> <id> [MIN <qty>]
@@ -161,7 +216,7 @@ TRADE <resting-id> <resting-price> <qty> <incoming-id> <incoming-price> <qty>
 
 ---
 
-## 5. Worked Example
+## 6. Worked Example
 
 Let’s simulate a short session. Commands (prefixed with `>` for clarity) and outputs:
 

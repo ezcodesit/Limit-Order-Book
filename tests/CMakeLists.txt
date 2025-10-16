@@ -16,6 +16,7 @@ add_executable(orderbook_tests
 
 target_link_libraries(orderbook_tests PRIVATE
     orderbook_core
+    matching_engine
     GTest::gtest_main
 )
 

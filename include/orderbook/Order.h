@@ -12,6 +12,9 @@ namespace ob {
 
 struct Order;
 
+/**
+ * @brief Intrusive node embedded inside an @ref Order for price-level queues.
+ */
 struct alignas(64) OrderNode
 #ifdef USE_BOOST_INTRUSIVE
     : boost::intrusive::list_base_hook<boost::intrusive::link_mode<boost::intrusive::normal_link>>
@@ -24,7 +27,24 @@ struct alignas(64) OrderNode
 #endif
 };
 
+/**
+ * @brief Representation of a single client order.
+ *
+ * Instances are allocated from a fixed pool and never move in memory, allowing the
+ * rest of the book to hold raw pointers to them. Each order embeds an @ref OrderNode
+ * so it can participate in intrusive price-level queues without extra allocations.
+ */
 struct Order {
+    /**
+     * @brief Construct a logical order payload.
+     *
+     * @param id_         Internal numeric identifier (assigned by the caller).
+     * @param price_      Limit price expressed in ticks.
+     * @param qty_        Remaining quantity.
+     * @param side_       Buy or sell intent.
+     * @param tif_        Time-in-force semantics.
+     * @param min_qty_    Optional minimum acceptable fill quantity.
+     */
     Order(types::OrderId id_,
           types::Price price_,
           types::Quantity qty_,

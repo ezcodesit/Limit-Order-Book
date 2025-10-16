@@ -11,13 +11,23 @@ namespace ob {
 
 #ifndef USE_BOOST_INTRUSIVE
 
+/**
+ * @brief Minimal intrusive FIFO queue used to maintain price-time priority.
+ *
+ * @tparam Node Node type exposing `Node* next`, `Node* prev`, and `Order* order` members.
+ */
 template <typename Node>
 class IntrusiveFifo {
 public:
     IntrusiveFifo() = default;
 
+    /// @return True when the queue holds no elements.
     bool empty() const noexcept { return head_ == nullptr; }
 
+    /**
+     * @brief Append a node to the end of the FIFO.
+     * @param node Node inserted; must not already belong to this queue.
+     */
     void push_back(Node* node) noexcept {
         node->next = nullptr;
         node->prev = tail_;
@@ -32,6 +42,7 @@ public:
     Node* front() noexcept { return head_; }
     const Node* front() const noexcept { return head_; }
 
+    /// Remove the head element (if any) from the queue.
     void pop_front() noexcept {
         if (!head_) return;
         Node* next = head_->next;
@@ -42,6 +53,10 @@ public:
         else head_->prev = nullptr;
     }
 
+    /**
+     * @brief Remove an arbitrary node from the FIFO.
+     * @param node Node to erase. No-op when nullptr.
+     */
     void erase(Node* node) noexcept {
         if (!node) return;
         if (node == head_) {
@@ -68,13 +83,23 @@ private:
 
 #else
 
+/**
+ * @brief Intrusive FIFO that delegates to `boost::intrusive::list` when enabled.
+ *
+ * @tparam Node Hook type deriving from `boost::intrusive::list_base_hook`.
+ */
 template <typename Node>
 class IntrusiveFifo {
 public:
     IntrusiveFifo() = default;
 
+    /// @return True when the queue holds no elements.
     bool empty() const noexcept { return list_.empty(); }
 
+    /**
+     * @brief Append a node to the end of the FIFO.
+     * @param node Node inserted; must not already belong to this queue.
+     */
     void push_back(Node* node) noexcept {
         if (!node) return;
         list_.push_back(*node);
@@ -97,6 +122,10 @@ public:
         node.order = nullptr;
     }
 
+    /**
+     * @brief Remove an arbitrary node from the FIFO.
+     * @param node Node to erase. No-op when nullptr.
+     */
     void erase(Node* node) noexcept {
         if (!node) return;
         list_.erase(list_.iterator_to(*node));

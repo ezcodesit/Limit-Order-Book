@@ -3,8 +3,11 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <sstream>
+#include <thread>
 #include <vector>
 
+#include "engine/Engine.h"
 #include "orderbook/OrderBook.h"
 
 namespace {
@@ -57,7 +60,7 @@ TEST(OrderBook, MultiLevelMatchAndRest) {
     auto* ask3 = book.create_order(3, 102, 3, ob::types::Side::Sell, ob::types::TimeInForce::GFD);
     ASSERT_NE(ask3, nullptr);
 
-    auto* incoming = book.create_order(4, 102, 12, ob::types::Side::Buy, ob::types::TimeInForce::GFD);
+    auto* incoming = book.create_order(4, 101, 14, ob::types::Side::Buy, ob::types::TimeInForce::GFD);
     ASSERT_NE(incoming, nullptr);
 
     ASSERT_EQ(collector.trades.size(), 2);
@@ -74,7 +77,7 @@ TEST(OrderBook, MultiLevelMatchAndRest) {
     auto* remainder = book.find(4);
     ASSERT_NE(remainder, nullptr);
     EXPECT_TRUE(remainder->resting);
-    EXPECT_EQ(remainder->quantity, 0);
+    EXPECT_EQ(remainder->quantity, 2);
 }
 
 TEST(OrderBook, FillOrKillRejection) {
@@ -105,6 +108,12 @@ TEST(OrderBook, MinimumQuantityEnforced) {
 
 TEST(OrderBook, ModifySideAndTimeInForce) {
     ob::OrderBook book(/*min_price=*/90, /*max_price=*/110);
+    TradeCollector collector;
+    book.set_trade_sink(&TradeCollector::sink, &collector);
+
+    auto* resting_buy = book.create_order(42, 101, 5, ob::types::Side::Buy, ob::types::TimeInForce::GFD);
+    ASSERT_NE(resting_buy, nullptr);
+
     auto* order = book.create_order(1, 100, 5, ob::types::Side::Buy, ob::types::TimeInForce::GFD);
     ASSERT_NE(order, nullptr);
     EXPECT_TRUE(order->resting);
@@ -116,12 +125,74 @@ TEST(OrderBook, ModifySideAndTimeInForce) {
                 ob::types::TimeInForce::IOC,
                 std::optional<ob::types::Quantity>(3));
 
-    const ob::Order* modified = book.find(1);
-    ASSERT_NE(modified, nullptr);
-    EXPECT_EQ(modified->side, ob::types::Side::Sell);
-    EXPECT_EQ(modified->tif, ob::types::TimeInForce::IOC);
-    EXPECT_TRUE(modified->has_min_qty);
-    EXPECT_EQ(modified->min_qty, 3);
+    EXPECT_FALSE(book.has_order(1));
+    ASSERT_FALSE(collector.trades.empty());
+    const auto& trade = collector.trades.back();
+    EXPECT_EQ(trade.incoming_id, 1u);
+    EXPECT_EQ(trade.resting_id, 42u);
+    EXPECT_EQ(trade.traded_qty, 5);
+}
+
+TEST(OrderBook, SnapshotDeterministicOutput) {
+    ob::OrderBook book(/*min_price=*/95, /*max_price=*/105);
+    auto* ask_high = book.create_order(1, 101, 3, ob::types::Side::Sell, ob::types::TimeInForce::GFD);
+    ASSERT_NE(ask_high, nullptr);
+    auto* ask_low = book.create_order(2, 100, 2, ob::types::Side::Sell, ob::types::TimeInForce::GFD);
+    ASSERT_NE(ask_low, nullptr);
+    auto* bid_high = book.create_order(3, 99, 4, ob::types::Side::Buy, ob::types::TimeInForce::GFD);
+    ASSERT_NE(bid_high, nullptr);
+    auto* bid_low = book.create_order(4, 98, 1, ob::types::Side::Buy, ob::types::TimeInForce::GFD);
+    ASSERT_NE(bid_low, nullptr);
+
+    std::ostringstream oss;
+    book.snapshot(oss);
+    const std::string expected =
+        "SELL:\n"
+        "100 2\n"
+        "101 3\n"
+        "BUY:\n"
+        "99 4\n"
+        "98 1\n";
+    EXPECT_EQ(oss.str(), expected);
+}
+
+TEST(EngineApp, ProcessesCommands) {
+    testing::internal::CaptureStdout();
+    engine::EngineApp app("AAPL", /*min_price=*/90, /*max_price=*/110, /*pool_capacity=*/1024);
+
+    engine::Command sell{};
+    sell.type = engine::Command::Type::Sell;
+    sell.id = "ask1";
+    sell.price = 100;
+    sell.qty = 5;
+    sell.side = ob::types::Side::Sell;
+    sell.tif = ob::types::TimeInForce::GFD;
+    ASSERT_TRUE(app.submit(std::move(sell)));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    engine::Command buy{};
+    buy.type = engine::Command::Type::Buy;
+    buy.id = "bid1";
+    buy.price = 101;
+    buy.qty = 5;
+    buy.side = ob::types::Side::Buy;
+    buy.tif = ob::types::TimeInForce::IOC;
+    ASSERT_TRUE(app.submit(std::move(buy)));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    engine::Command print{};
+    print.type = engine::Command::Type::Print;
+    ASSERT_TRUE(app.submit(std::move(print)));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    std::string output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(output.find("AAPL TRADE ask1"), std::string::npos);
+    EXPECT_NE(output.find("Symbol: AAPL"), std::string::npos);
+    EXPECT_NE(output.find("SELL:"), std::string::npos);
+    EXPECT_NE(output.find("BUY:"), std::string::npos);
 }
 
 TEST(OrderBookPerf, OperationsWithinOneSecond) {
